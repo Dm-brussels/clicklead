@@ -24,6 +24,11 @@ const nextConfig = {
         destination: '/home',
         permanent: false,
       },
+      {
+        source: '/moto',
+        destination: '/moto/index.html',
+        permanent: false,
+      },
     ];
   }
 };
