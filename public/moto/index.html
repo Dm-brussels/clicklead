@@ -491,10 +491,12 @@ button { font: inherit; color: inherit; }
     computeView();
     if (changed || canvas.width === 0) {
       const t = pickTier();
-      tier = Math.max(tier, t);
+      // a probe in progress is undone before the new size is applied
+      tier = Math.max(perf.pending ? perf.from : tier, t);
       perf.top = t;
       perf.locked = false;
       perf.pending = 0;
+      perf.wins = 0;
       applyScale();
     }
     document.getElementById('rotateHint').hidden = !view.portrait;
@@ -1457,8 +1459,10 @@ button { font: inherit; color: inherit; }
       let gap = Infinity;
       let lv = 0;
       for (const o of cars) {
-        // the car whose rear is further back always follows, so overlapping cars separate
-        if (o === c || o.z < c.z || (o.z === c.z && o.len <= c.len)) continue;
+        // the car whose middle is further back follows, so overlapping cars separate
+        const om = o.z + o.len / 2;
+        const cm = c.z + c.len / 2;
+        if (o === c || om < cm || (om === cm && o.len <= c.len)) continue;
         const near = Math.abs(o.x - c.x) < (o.w + c.w) / 2 + 0.5;
         const merging = o.moving && Math.abs(LANES[o.tLane] - c.x) < (o.w + c.w) / 2 + 0.5;
         if (near || merging) {
@@ -1622,10 +1626,11 @@ button { font: inherit; color: inherit; }
       t.x = e.clientX;
       t.y = e.clientY;
       t.maxd = Math.max(t.maxd, axisMove(side, t));
-      // a spare that clearly slides while the owner has never moved (a resting palm) takes over
+      // a spare that clearly slides while the owner barely moved and rests near its landing
+      // point (a palm) takes over
       if (t !== owner && owner) {
         const R = ctrlRadius();
-        if (t.maxd > R * 0.3 && owner.maxd < R * 0.08) {
+        if (t.maxd > R * 0.3 && owner.maxd < Math.max(R * 0.08, t.maxd * 0.3) && axisMove(side, owner) < R * 0.08) {
           list.splice(list.indexOf(t), 1, owner);
           input[side] = t;
         }
@@ -1687,15 +1692,15 @@ button { font: inherit; color: inherit; }
       const d = t.x - t.x0;
       st = clamp(d / (d < 0 ? t.lt : t.rt), -1, 1);
       // sliding into the very edge of the screen counts as full lock
-      if (t.x <= 4 && t.x0 > 12) st = -1;
-      else if (t.x >= W - 4 && t.x0 < W - 12) st = 1;
+      if (t.x <= 4 && t.x0 - t.x >= 8) st = -1;
+      else if (t.x >= W - 4 && t.x - t.x0 >= 8) st = 1;
     }
     if (input.R) {
       const t = input.R;
       const d = t.y0 - t.y;
       th = clamp(d / (d < 0 ? t.dn : t.up), -1, 1);
-      if (t.y >= H - 4 && t.y0 < H - 12) th = -1;
-      else if (t.y <= 4 && t.y0 > 12) th = 1;
+      if (t.y >= H - 4 && t.y - t.y0 >= 8) th = -1;
+      else if (t.y <= 4 && t.y0 - t.y >= 8) th = 1;
     }
     st = shapeAxis(st, 0.05, 1.3);
     th = shapeAxis(th, 0.07, 1);
@@ -2112,7 +2117,7 @@ button { font: inherit; color: inherit; }
       // traffic that was behind the bike stops behind the wreck instead of passing through it
       const tail = run.pos - TAIL;
       for (const c of cars) {
-        if (!c.prevBehind || Math.abs(P.x - c.x) > c.w / 2 + BIKE_HALF) continue;
+        if (!c.prevBehind || c.z > P.prevFront || Math.abs(P.x - c.x) > c.w / 2 + BIKE_HALF) continue;
         if (c.z + c.len > tail) {
           c.z = tail - c.len - 0.05;
           c.v = Math.min(c.v, P.v);
@@ -2490,7 +2495,10 @@ button { font: inherit; color: inherit; }
       pauseGame();
       armHistory();
     } else if (state === 'crash') {
+      P.v = Math.max(0, P.v - 16 * Math.max(0, 1.5 - crashT));
+      crashT = Math.max(crashT, 1.5);
       gameOver();
+      armHistory();
     } else if (state === 'pause' || state === 'over') {
       // back from a menu card goes to the title; the next back leaves the page
       if (AU.ctx) AU.ctx.resume().catch(() => {});
@@ -2636,6 +2644,30 @@ button { font: inherit; color: inherit; }
     ctx.lineTo(dx, dy);
     ctx.closePath();
     ctx.fill();
+  }
+  // Sodium pools under the median masts (one every 12 segments). Each pool is painted when the
+  // road pass reaches its near edge, so anything nearer still covers it.
+  const POOL_HALF = 6;
+  function drawPool(lampIdx, n) {
+    const zc = lampIdx * SEG + 2.3;
+    if (zc + POOL_HALF < run.pos + 1) return;
+    const lat = RAIL_L - 0.45 + SPR.mast.lamp.x;
+    const c = proj(zc, lat, 0);
+    const cx = c.x;
+    const cy = c.y;
+    const sc = c.s;
+    if (cy > CLIP[Math.max(0, n)] + 4) return;
+    const yNear = proj(Math.max(zc - POOL_HALF, run.pos + 1), lat, 0).y;
+    const yFar = proj(zc + POOL_HALF, lat, 0).y;
+    const ry = Math.max(1, (yNear - yFar) / 2);
+    const rx = 6.5 * sc;
+    if (rx < 1) return;
+    const a = (0.32 * pal.lamps * (1 - fogIndex(Math.max(0, n)) / RAMP)) / Math.max(0.35, 1 - pal.dark);
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.globalAlpha = Math.min(0.9, a);
+    ctx.drawImage(GLOW.sodium, cx - rx, (yNear + yFar) / 2 - ry, rx * 2, ry * 2);
+    ctx.globalAlpha = 1;
+    ctx.globalCompositeOperation = 'source-over';
   }
   const fogIndex = (n) => Math.min(RAMP - 1, Math.round(smooth(0.12, 1, n / DRAW) * (RAMP - 1)));
   const spriteAlpha = (n) => 1 - smooth(0.6, 0.98, n / DRAW);
@@ -2886,6 +2918,15 @@ button { font: inherit; color: inherit; }
           addLight(x1 + (RAIL_L + 0.1) * s1, y1 - 0.6 * s1, s1 * 0.22, 'white', 0.35 * pal.lamps, 0);
         }
       }
+      if (pal.lamps > 0.05) {
+        // a pool whose near edge falls in this segment
+        if ((seg.i + 1) % 12 === 0) drawPool(seg.i + 1, n);
+        // pools whose near edge is already behind the camera
+        if (n === 0) {
+          const L0 = seg.i - (seg.i % 12);
+          for (const L of [L0, L0 + 12]) if (L - 1 < seg.i) drawPool(L, 0);
+        }
+      }
       drawSegmentObjects(seg, n);
     }
   }
@@ -2958,9 +2999,6 @@ button { font: inherit; color: inherit; }
       const lx = X + (L.x - 0) * s1;
       const ly = Y - L.h * s1;
       if (ly <= CLIP[n] + 2) addLight(lx, ly, s1 * 1.3, 'sodium', pal.lamps, 0);
-      // pool of sodium light on the asphalt
-      const p = proj(z + 2, s.x + L.x, 0);
-      if (n > 1 && p.y <= CLIP[n] + 4) addLight(p.x, p.y, p.s * 9, 'sodium', 0.28 * pal.lamps, 1);
     }
     if (s.flash && vis) {
       const on = Math.sin(clock * 9) > -0.2;
@@ -3759,7 +3797,7 @@ button { font: inherit; color: inherit; }
   // fails caps quality for the session.
   const perf = {
     acc: 0, n: 0, t: 0, base: 17.5, skipUntil: 0, prev: 0, bad: 0, good: 0,
-    pending: 0, from: -1, wins: 0, locked: false, lockAvg: 0, drift: 0, top: 0, cap: 0, upAt: -1, windows: 0,
+    pending: 0, from: -1, wins: 0, locked: false, lockAvg: 0, drift: 0, unlocks: 0, top: 0, cap: 0, upAt: -1, windows: 0,
   };
   function perfReset() {
     perf.acc = 0;
@@ -3768,11 +3806,12 @@ button { font: inherit; color: inherit; }
     perf.skipUntil = performance.now() + 450;
   }
   function perfNewRun() {
-    if (perf.pending) setTier(perf.from);
-    perf.pending = 0;
+    // an unfinished probe simply resumes in the next run
+    perf.acc = 0;
+    perf.n = 0;
+    perf.t = 0;
     perf.bad = 0;
     perf.good = 0;
-    perf.upAt = -1;
   }
   function setTier(t) {
     if (t === tier) return;
@@ -3800,9 +3839,10 @@ button { font: inherit; color: inherit; }
     if (perf.locked) {
       // re-probe only if the load clearly changed since the lock
       perf.drift = avg > perf.lockAvg * 1.25 ? perf.drift + 1 : 0;
-      if (perf.drift >= 2) {
+      if (perf.drift >= 2 && perf.unlocks < 1) {
         perf.locked = false;
         perf.drift = 0;
+        perf.unlocks++;
       }
       return;
     }
@@ -3814,8 +3854,8 @@ button { font: inherit; color: inherit; }
       perf.wins = 0;
       if (tier < TIERS.length - 1 && pixelsAt(tier + 1) >= 0.45e6) setTier(tier + 1);
       else {
-        perf.lockAvg = perf.pending;
-        setTier(perf.from);
+        perf.lockAvg = Math.max(perf.lockAvg, perf.pending);
+        setTier(Math.max(perf.from, perf.cap));
         perf.pending = 0;
         perf.locked = true;
       }
