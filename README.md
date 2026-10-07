@@ -65,6 +65,13 @@ This project uses Tailwind CSS for styling with the following features:
 - `npm run lint:fix` - Fix ESLint issues automatically
 - `npm run format` - Format code with Prettier
 
+## 🏍️ Interfile (mobile game)
+
+`public/moto/index.html` is a self-contained POV motorcycle game (no dependencies), served at `/moto`.
+Left thumb slides left/right to steer; right thumb slides up to accelerate and down to brake, both progressive.
+Arrow keys or WASD/ZQSD work on desktop, `P` pauses. It can be added to a phone's home screen (web app manifest included).
+Append `#debug` to the URL to expose the game state as `window.__IF` for automated tests.
+
 ## 📱 Deployment
 
 Build the application for production:

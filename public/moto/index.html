@@ -492,7 +492,7 @@ button { font: inherit; color: inherit; }
     if (changed || canvas.width === 0) {
       const t = pickTier();
       // a probe in progress is undone before the new size is applied
-      tier = Math.max(perf.pending ? perf.from : tier, t);
+      tier = Math.max(perf.pending ? Math.max(perf.from, perf.cap) : tier, t);
       perf.top = t;
       perf.locked = false;
       perf.pending = 0;
@@ -2645,29 +2645,37 @@ button { font: inherit; color: inherit; }
     ctx.closePath();
     ctx.fill();
   }
-  // Sodium pools under the median masts (one every 12 segments). Each pool is painted when the
-  // road pass reaches its near edge, so anything nearer still covers it.
+  // Sodium pools under the median masts (one every 12 segments). A pool spans segments L-1..L+2
+  // and is painted slice by slice with the road, so anything standing on it always covers it.
   const POOL_HALF = 6;
-  function drawPool(lampIdx, n) {
+  function drawPoolSlice(lampIdx, n) {
     const zc = lampIdx * SEG + 2.3;
     if (zc + POOL_HALF < run.pos + 1) return;
+    const yTop = SY[n + 1];
+    const yBot = SY[n];
+    if (yBot - yTop < 0.3) return;
     const lat = RAIL_L - 0.45 + SPR.mast.lamp.x;
-    const c = proj(zc, lat, 0);
+    const c = proj(Math.max(zc, run.pos + 0.6), lat, 0);
     const cx = c.x;
     const cy = c.y;
-    const sc = c.s;
-    if (cy > CLIP[Math.max(0, n)] + 4) return;
-    const yNear = proj(Math.max(zc - POOL_HALF, run.pos + 1), lat, 0).y;
-    const yFar = proj(zc + POOL_HALF, lat, 0).y;
-    const ry = Math.max(1, (yNear - yFar) / 2);
-    const rx = 6.5 * sc;
+    const rx = 6.5 * c.s;
     if (rx < 1) return;
-    const a = (0.32 * pal.lamps * (1 - fogIndex(Math.max(0, n)) / RAMP)) / Math.max(0.35, 1 - pal.dark);
+    const ryNear = Math.max(1, proj(Math.max(zc - POOL_HALF, run.pos + 0.6), lat, 0).y - cy);
+    const ryFar = Math.max(1, cy - proj(zc + POOL_HALF, lat, 0).y);
+    const a = (0.32 * pal.lamps * (1 - fogIndex(n) / RAMP)) / Math.max(0.35, 1 - pal.dark);
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(-W * 1.5, yTop, W * 4, yBot - yTop + 0.6);
+    ctx.clip();
     ctx.globalCompositeOperation = 'lighter';
     ctx.globalAlpha = Math.min(0.9, a);
-    ctx.drawImage(GLOW.sodium, cx - rx, (yNear + yFar) / 2 - ry, rx * 2, ry * 2);
-    ctx.globalAlpha = 1;
-    ctx.globalCompositeOperation = 'source-over';
+    // brightest point stays under the lamp: far and near halves are scaled separately
+    const g = GLOW.sodium;
+    const hw = g.width;
+    const hh = g.height / 2;
+    ctx.drawImage(g, 0, 0, hw, hh, cx - rx, cy - ryFar, rx * 2, ryFar);
+    ctx.drawImage(g, 0, hh, hw, hh, cx - rx, cy, rx * 2, ryNear);
+    ctx.restore();
   }
   const fogIndex = (n) => Math.min(RAMP - 1, Math.round(smooth(0.12, 1, n / DRAW) * (RAMP - 1)));
   const spriteAlpha = (n) => 1 - smooth(0.6, 0.98, n / DRAW);
@@ -2918,14 +2926,10 @@ button { font: inherit; color: inherit; }
           addLight(x1 + (RAIL_L + 0.1) * s1, y1 - 0.6 * s1, s1 * 0.22, 'white', 0.35 * pal.lamps, 0);
         }
       }
-      if (pal.lamps > 0.05) {
-        // a pool whose near edge falls in this segment
-        if ((seg.i + 1) % 12 === 0) drawPool(seg.i + 1, n);
-        // pools whose near edge is already behind the camera
-        if (n === 0) {
-          const L0 = seg.i - (seg.i % 12);
-          for (const L of [L0, L0 + 12]) if (L - 1 < seg.i) drawPool(L, 0);
-        }
+      if (pal.lamps > 0.05 && y2 < y1 - 0.05 && n < 110) {
+        const r = ((seg.i % 12) + 12) % 12;
+        if (r === 11) drawPoolSlice(seg.i + 1, n);
+        else if (r <= 2) drawPoolSlice(seg.i - r, n);
       }
       drawSegmentObjects(seg, n);
     }
@@ -3839,7 +3843,9 @@ button { font: inherit; color: inherit; }
     if (perf.locked) {
       // re-probe only if the load clearly changed since the lock
       perf.drift = avg > perf.lockAvg * 1.25 ? perf.drift + 1 : 0;
-      if (perf.drift >= 2 && perf.unlocks < 1) {
+      perf.severe = avg > perf.lockAvg * 1.6 ? (perf.severe || 0) + 1 : 0;
+      if ((perf.drift >= 2 && perf.unlocks < 1) || perf.severe >= 2) {
+        perf.severe = 0;
         perf.locked = false;
         perf.drift = 0;
         perf.unlocks++;
