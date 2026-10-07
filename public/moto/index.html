@@ -473,6 +473,7 @@ button { font: inherit; color: inherit; }
   }
   function applyScale() {
     RS = TIERS[tier];
+    if (typeof perfReset === 'function') perfReset();
     canvas.width = Math.max(1, Math.round(W * RS));
     canvas.height = Math.max(1, Math.round(H * RS));
     ctx.setTransform(RS, 0, 0, RS, 0, 0);
@@ -489,19 +490,20 @@ button { font: inherit; color: inherit; }
     readSafe();
     computeView();
     if (changed || canvas.width === 0) {
-      tier = Math.max(tier, pickTier());
+      const t = pickTier();
+      tier = Math.max(tier, t);
+      perf.top = t;
       applyScale();
     }
     document.getElementById('rotateHint').hidden = !view.portrait;
   }
-  const queueResize = () => {
-    if (!resizeQueued) {
-      resizeQueued = true;
-      requestAnimationFrame(resize);
-    }
-  };
+  // Resizing clears the canvas, so it happens at the top of the next frame, right before drawing.
+  const queueResize = () => { resizeQueued = true; };
   window.addEventListener('resize', queueResize);
-  window.addEventListener('orientationchange', () => setTimeout(resize, 120));
+  window.addEventListener('orientationchange', () => {
+    queueResize();
+    setTimeout(queueResize, 150);
+  });
   if (window.visualViewport) window.visualViewport.addEventListener('resize', queueResize);
 
   /* ================================================================
@@ -926,8 +928,13 @@ button { font: inherit; color: inherit; }
         rr(g, 0, 0, w, h * 0.6, w * 0.04); g.fill();
         g.fillStyle = '#0c0d0f';
         rr(g, w * 0.05, h * 0.035, w * 0.9, h * 0.53, w * 0.03); g.fill();
-        g.fillStyle = '#3a3420';
+        // dot-matrix arrow pointing to the open lane
+        const lit = (xx, yy) => {
+          const c = dir > 0 ? xx : 12 - xx;
+          return (yy === 3 && c >= 1 && c <= 10) || (c >= 7 && c <= 10 && Math.abs(yy - 3) === 10 - c);
+        };
         for (let yy = 0; yy < 7; yy++) for (let xx = 0; xx < 13; xx++) {
+          g.fillStyle = lit(xx, yy) ? '#ffd23f' : '#3a3420';
           g.beginPath();
           g.arc(w * (0.12 + xx * 0.063), h * (0.09 + yy * 0.067), w * 0.017, 0, TAU);
           g.fill();
@@ -1287,6 +1294,12 @@ button { font: inherit; color: inherit; }
     else if (r < 0.7) oil(i);
     else if (r < 0.84) pothole(i);
     else breakdown(i);
+    // the hard shoulder is no safe haven: debris and broken-down cars end up there too
+    if (Math.random() < 0.3 + 0.2 * diff) {
+      const j = i + randInt(20, 45);
+      if (Math.random() < 0.5) breakdown(j);
+      else debris(j, true);
+    }
     road.nextHazard = z + lerp(560, 260, diff) + rand(0, lerp(420, 220, diff));
   }
   function roadworks(i, diff) {
@@ -1317,16 +1330,16 @@ button { font: inherit; color: inherit; }
       cars.push(makeCar(pick(VEH.work), lx, wz, 0, { parked: true, beacon: true }));
     }
   }
-  function debris(i) {
+  function debris(i, shoulder) {
     const lane = randInt(0, 2);
     const z = i * SEG + 2;
-    const x = LANES[lane] + rand(-0.8, 0.8);
+    const x = shoulder ? (ROAD_HALF + PAVE_R) / 2 + rand(-0.6, 0.6) : LANES[lane] + rand(-0.8, 0.8);
     if (Math.random() < 0.5) pushSprite(i, hazard(SPR.tire, x, z, 'hard', 0.36, 0.4));
     else {
       pushSprite(i, hazard(SPR.boxes, x, z, 'soft', 0.5, 0.6));
       pushSprite(i + 1, hazard(SPR.boxes, x + rand(-1.2, 1.2), z + 4, 'soft', 0.5, 0.6));
     }
-    blocked.push({ lane, z0: z - 4, z1: z + 8 });
+    if (!shoulder) blocked.push({ lane, z0: z - 4, z1: z + 8 });
   }
   function oil(i) {
     const lane = randInt(0, 2);
@@ -1373,7 +1386,7 @@ button { font: inherit; color: inherit; }
   function makeCar(def, x, z, v, extra) {
     return Object.assign({
       def, x, z, v, vWant: v, len: def.len, w: def.w, lane: laneOf(x), tLane: laneOf(x), tx: x,
-      blink: 0, blinkT: 0, moving: false, brake: false, passed: false, minGap: 99, prevAhead: true,
+      blink: 0, blinkT: 0, moving: false, brake: false, passed: false, minGap: 99, prevAhead: true, prevBehind: false, honkT: -9,
       parked: false, hazard: false, beacon: false, whooshed: false,
     }, extra || {});
   }
@@ -1389,7 +1402,7 @@ button { font: inherit; color: inherit; }
   function spawnCar(z) {
     for (let tries = 0; tries < 5; tries++) {
       const lane = randInt(0, 2);
-      if (isBlocked(lane, z - 60, z + 30)) continue;
+      if (isBlocked(lane, z - 60, z + 250)) continue;
       if (z - run.pos < 140 && Math.abs(LANES[lane] - P.x) < 2) continue;
       let clear = true;
       for (const c of cars) {
@@ -1426,7 +1439,7 @@ button { font: inherit; color: inherit; }
     }
     for (let k = cars.length - 1; k >= 0; k--) {
       const c = cars[k];
-      if (c.z + c.len < run.pos - 40 || c.z > run.pos + DRAW * SEG + 420) cars.splice(k, 1);
+      if (c.z + c.len < run.pos - 40 || (!c.parked && c.z > run.pos + DRAW * SEG + 420)) cars.splice(k, 1);
     }
   }
   function updateCars(dt) {
@@ -1446,13 +1459,27 @@ button { font: inherit; color: inherit; }
           }
         }
       }
+      // the rider is a vehicle too: traffic coming up behind the bike follows it
+      if (!attract && (state === 'play' || state === 'count')) {
+        const rz = run.pos - TAIL;
+        if (rz > c.z + c.len - 1 && Math.abs(P.x - c.x) < c.w / 2 + BIKE_HALF + 0.35) {
+          const gp = rz - (c.z + c.len);
+          if (gp < gap) {
+            gap = gp;
+            lv = P.v;
+          }
+        }
+      }
       let want = c.vWant;
-      if (gap < 45) want = Math.min(want, lv + (gap - 14) * 0.35);
+      // brake early enough to stop 6 m short of the leader at 6 m/s²
+      if (gap < Math.max(45, (c.v * c.v) / 12 + 12)) want = Math.min(want, gap <= 6 ? 0 : Math.sqrt(lv * lv + 12 * (gap - 6)));
       const bAhead = blockedAhead(c.lane, c.z + c.len);
       let mustChange = false;
-      if (bAhead < 150 && !c.moving) {
-        mustChange = true;
-        if (bAhead < 70) want = Math.min(want, Math.max(0, (bAhead - 10) * 0.45));
+      const leaving = c.moving && c.tLane !== c.lane && Math.abs(c.x - LANES[c.lane]) > 1.2;
+      if (bAhead < Math.max(150, (c.v * c.v) / 10 + 40) && !leaving) {
+        mustChange = !c.moving;
+        // stop 8 m before a lane closure at 5 m/s² if no merge has happened yet
+        want = Math.min(want, Math.sqrt(Math.max(0, 10 * (bAhead - 8))));
       }
       if (!c.moving && c.blinkT <= 0) {
         const slowLeader = gap < 55 && lv < c.vWant - 2.5;
@@ -1491,7 +1518,7 @@ button { font: inherit; color: inherit; }
           c.blink = 0;
         } else c.x += Math.sign(d) * stepX;
       }
-      const dv = clamp(want - c.v, -7 * dt, 2.2 * dt);
+      const dv = clamp(want - c.v, -(gap < 20 ? 9.5 : 7) * dt, 2.2 * dt);
       c.brake = dv < -1.5 * dt || want < 1;
       c.v = Math.max(0, c.v + dv);
       c.z += c.v * dt;
@@ -1501,13 +1528,21 @@ button { font: inherit; color: inherit; }
     const lx = LANES[nl];
     for (const o of cars) {
       if (o === c) continue;
-      if (Math.abs(o.x - lx) < 2.4 && o.z < c.z + c.len + 22 && o.z + o.len > c.z - 18) return false;
+      const inLane = Math.abs(o.x - lx) < 2.4 || ((o.moving || o.blinkT > 0) && o.tLane === nl);
+      if (!inLane) continue;
+      if (o.z < c.z + c.len + 22 && o.z + o.len > c.z - 18) return false;
+      // leave a time gap to faster traffic behind and slower traffic ahead
+      if (o.z + o.len <= c.z && c.z - (o.z + o.len) < Math.max(18, (o.v - c.v) * 2.5)) return false;
+      if (o.z >= c.z + c.len && o.z - (c.z + c.len) < Math.max(22, (c.v - o.v) * 2.5)) return false;
     }
     if (isBlocked(nl, c.z - 20, c.z + c.len + 110)) return false;
-    if (!attract && state === 'play') {
-      // never cut in right in front of the rider
-      const rel = Math.max(0, P.v - c.v);
-      if (Math.abs(P.x - lx) < 2.4 && run.pos > c.z - 30 - rel * 1.6 && run.pos < c.z + c.len + 3) return false;
+    if (!attract && (state === 'play' || state === 'count')) {
+      // never cut in front of the rider, whether the bike is closing in or just ahead
+      if (Math.abs(P.x - lx) < 2.4) {
+        const closing = Math.max(0, P.v - c.v);
+        const opening = Math.max(0, c.v - P.v);
+        if (run.pos > c.z - 30 - closing * 1.6 && run.pos < c.z + c.len + 6 + opening * 2.5) return false;
+      }
     }
     return true;
   }
@@ -1515,9 +1550,24 @@ button { font: inherit; color: inherit; }
   /* ================================================================
    *  Input — left thumb steers (horizontal), right thumb throttles (vertical)
    * ================================================================ */
-  const input = { L: null, R: null, steerT: 0, thrT: 0, steer: 0, thr: 0, kSteer: 0, usedL: 0, usedR: 0 };
+  const input = { L: null, R: null, spare: { L: [], R: [] }, steerT: 0, thrT: 0, steer: 0, thr: 0, kSteer: 0, usedL: 0, usedR: 0 };
   const keys = Object.create(null);
-  const ctrlRadius = () => clamp(Math.min(W, H) * 0.19, 54, 120);
+  const ctrlRadius = () => clamp(Math.min(W, H) * 0.24, 64, 140);
+  // Travel available in each direction from the landing point; near a screen edge the
+  // edge itself becomes full lock / full brake.
+  function setTravel(t) {
+    const R = ctrlRadius();
+    t.lt = clamp(t.x0 - safe.l - 6, R * 0.4, R);
+    t.rt = clamp(W - safe.r - 6 - t.x0, R * 0.4, R);
+    t.up = clamp(t.y0 - safe.t - 6, R * 0.4, R);
+    t.dn = clamp(H - safe.b - 6 - t.y0, R * 0.4, R);
+    return t;
+  }
+  function rebase(t) {
+    t.x0 = t.x;
+    t.y0 = t.y;
+    setTravel(t);
+  }
   function shapeAxis(v, dz, p) {
     const a = Math.abs(v);
     if (a < dz) return 0;
@@ -1527,31 +1577,37 @@ button { font: inherit; color: inherit; }
     if (e.pointerType === 'mouse' && e.button !== 0) return;
     e.preventDefault();
     const side = e.clientX < W / 2 ? 'L' : 'R';
-    input[side] = { id: e.pointerId, x0: e.clientX, y0: e.clientY, x: e.clientX, y: e.clientY };
+    const t = setTravel({ id: e.pointerId, x0: e.clientX, y0: e.clientY, x: e.clientX, y: e.clientY });
+    // the first thumb on each half keeps control; a palm or stray finger waits as a spare
+    let owner = input[side];
+    try {
+      if (owner && !canvas.hasPointerCapture(owner.id)) owner = input[side] = null;
+    } catch (_) { /* ignore */ }
+    if (owner) input.spare[side].push(t);
+    else input[side] = t;
     try { canvas.setPointerCapture(e.pointerId); } catch (_) { /* ignore */ }
     if (AU.ctx && AU.ctx.state !== 'running') AU.ctx.resume().catch(() => {});
   }
   function onMove(e) {
-    const R = ctrlRadius();
     for (const side of ['L', 'R']) {
-      const t = input[side];
-      if (!t || t.id !== e.pointerId) continue;
+      const list = input.spare[side];
+      const t = input[side] && input[side].id === e.pointerId ? input[side] : list.find((p) => p.id === e.pointerId);
+      if (!t) continue;
       t.x = e.clientX;
       t.y = e.clientY;
-      // floating origin: the neutral point follows the thumb past the end of travel
-      if (side === 'L') {
-        const d = t.x - t.x0;
-        if (d > R) t.x0 = t.x - R;
-        else if (d < -R) t.x0 = t.x + R;
-      } else {
-        const d = t.y - t.y0;
-        if (d > R) t.y0 = t.y - R;
-        else if (d < -R) t.y0 = t.y + R;
-      }
     }
   }
   function onUp(e) {
-    for (const side of ['L', 'R']) if (input[side] && input[side].id === e.pointerId) input[side] = null;
+    for (const side of ['L', 'R']) {
+      const list = input.spare[side];
+      const k = list.findIndex((p) => p.id === e.pointerId);
+      if (k >= 0) list.splice(k, 1);
+      if (input[side] && input[side].id === e.pointerId) {
+        const next = list.shift() || null;
+        if (next) rebase(next);
+        input[side] = next;
+      }
+    }
   }
   canvas.addEventListener('pointerdown', onDown);
   canvas.addEventListener('pointermove', onMove);
@@ -1586,13 +1642,19 @@ button { font: inherit; color: inherit; }
   window.addEventListener('keyup', (e) => { keys[e.code] = false; });
   window.addEventListener('blur', () => {
     for (const k in keys) keys[k] = false;
-    input.L = null;
-    input.R = null;
+    if (state === 'play' || state === 'count') pauseGame();
   });
   function readInput(dt) {
-    const R = ctrlRadius();
-    let st = input.L ? clamp((input.L.x - input.L.x0) / R, -1, 1) : 0;
-    let th = input.R ? clamp((input.R.y0 - input.R.y) / R, -1, 1) : 0;
+    let st = 0;
+    let th = 0;
+    if (input.L) {
+      const d = input.L.x - input.L.x0;
+      st = clamp(d / (d < 0 ? input.L.lt : input.L.rt), -1, 1);
+    }
+    if (input.R) {
+      const d = input.R.y0 - input.R.y;
+      th = clamp(d / (d < 0 ? input.R.dn : input.R.up), -1, 1);
+    }
     st = shapeAxis(st, 0.05, 1.3);
     th = shapeAxis(th, 0.07, 1);
     const kL = keys.ArrowLeft || keys.KeyA;
@@ -1825,6 +1887,7 @@ button { font: inherit; color: inherit; }
   function resetRun() {
     Object.assign(run, {
       pos: 0, score: 0, mult: 1, combo: 0, comboT: 0, near: 0, overtakes: 0, vmax: 0, t: 0, palOffset: 0,
+      hit: null, offRoad: false,
       bestBeaten: false,
     });
   }
@@ -1995,12 +2058,21 @@ button { font: inherit; color: inherit; }
     P.prevFront = run.pos + NOSE;
     run.pos += P.v * dt;
     updateCars(dt);
+    if (run.hit && (state === 'crash' || state === 'over')) {
+      const h = run.hit;
+      const lim = (h.len !== undefined && h.def && h.def.len ? h.z : h.z - h.len / 2) - NOSE - 0.05;
+      if (run.pos > lim) {
+        run.pos = lim;
+        P.v = Math.min(P.v, h.v || 0);
+      }
+    }
 
     if (!attract && (state === 'play')) {
       checkCars();
       checkStatics();
       const kmh = P.v * 3.6;
-      run.mult = kmh < 90 ? 1 : kmh < 150 ? 2 : kmh < 210 ? 3 : 4;
+      run.offRoad = Math.abs(P.x) > ROAD_HALF + 0.3;
+      run.mult = run.offRoad || kmh < 90 ? 1 : kmh < 150 ? 2 : kmh < 210 ? 3 : 4;
       run.score += P.v * dt * run.mult * 0.5;
       run.vmax = Math.max(run.vmax, kmh);
       run.t += dt;
@@ -2036,6 +2108,7 @@ button { font: inherit; color: inherit; }
       }
       if (cz0 > pz1 || cz1 < pz0) {
         c.prevAhead = cz0 >= pz1;
+        c.prevBehind = cz1 < pz0;
         continue;
       }
       const gap = Math.abs(P.x - c.x) - c.w / 2 - BIKE_HALF;
@@ -2044,12 +2117,24 @@ button { font: inherit; color: inherit; }
         if (c.prevAhead) {
           const rel = P.v - c.v;
           if (rel < 7.5 && !c.parked) bumpInto(c);
-          else crash(c.def.type === 'truck' ? 'Tu as embouti un camion' : c.parked ? 'Tu as percuté un véhicule à l\'arrêt' : 'Tu as embouti une voiture', c);
+          else crash(c.def.type === 'truck' ? 'Tu as embouti un camion' : c.parked ? 'Tu as percuté un véhicule à l\'arrêt' : 'Tu as embouti une voiture', c, true);
           return;
+        }
+        if (c.prevBehind) {
+          // caught up from behind (the rider braked hard in front of it): it brakes and honks
+          c.z = pz0 - c.len - 0.05;
+          c.v = Math.min(c.v, P.v);
+          if (clock - c.honkT > 2) {
+            c.honkT = clock;
+            sfx.horn(0);
+            fx.shake = Math.max(fx.shake, 0.25);
+          }
+          continue;
         }
         sideSwipe(c, gap);
       }
       c.prevAhead = false;
+      c.prevBehind = false;
     }
   }
   function onPass(c) {
@@ -2122,7 +2207,7 @@ button { font: inherit; color: inherit; }
         if (Math.abs(P.x - s.x) > s.hw + BIKE_HALF) continue;
         s.hit = true;
         if (s.kind === 'hard') {
-          crash(s.def === SPR.tire ? 'Tu as roulé sur un pneu tombé d\'un camion' : 'Tu as foncé dans le chantier', s);
+          crash(s.def === SPR.tire ? 'Tu as roulé sur un pneu tombé d\'un camion' : 'Tu as foncé dans le chantier', s, true);
           return;
         }
         if (s.kind === 'soft') {
@@ -2157,10 +2242,12 @@ button { font: inherit; color: inherit; }
     run.combo = 0;
     run.comboT = 0;
   }
-  function crash(reason, obj) {
+  function crash(reason, obj, frontal) {
     if (state !== 'play') return;
     state = 'crash';
     crashT = 0;
+    // a head-on hit stops the bike at the obstacle instead of sliding through it
+    run.hit = frontal && obj && obj.def !== SPR.tire ? obj : null;
     run.reason = reason + (P.v > 3 ? ' à ' + Math.round(P.v * 3.6) + ' km/h.' : '.');
     P.spinV = sgn(P.x - (obj && obj.x !== undefined ? obj.x : 0) || 1) * rand(2.4, 3.4);
     fx.shake = 1.4;
@@ -2225,9 +2312,17 @@ button { font: inherit; color: inherit; }
   function refreshBest() {
     $('bestTitle').innerHTML = save.best > 0 ? 'Record : <b>' + fmtInt(save.best) + ' pts</b>' : 'Record : <b>aucun pour l\'instant</b>';
   }
+  let historyGuard = false;
   function startRun() {
     audioInit();
     requestWake();
+    if (!historyGuard) {
+      // a back swipe during a run pauses the game instead of leaving the page
+      try {
+        history.pushState({ interfile: 1 }, '');
+        historyGuard = true;
+      } catch (_) { /* sandboxed */ }
+    }
     tryFullscreen();
     attract = false;
     resetWorld(0);
@@ -2235,6 +2330,9 @@ button { font: inherit; color: inherit; }
     countT = 3.2;
     input.usedL = 0;
     input.usedR = 0;
+    perf.bad = 0;
+    perf.good = 0;
+    perf.pending = 0;
     showScreen(null);
     $('hudBtns').hidden = false;
     sfx.beep(440);
@@ -2247,6 +2345,7 @@ button { font: inherit; color: inherit; }
     showScreen('title');
     $('hudBtns').hidden = true;
     refreshBest();
+    releaseWake();
   }
   function pauseGame() {
     if (state !== 'play' && state !== 'count') return;
@@ -2254,9 +2353,8 @@ button { font: inherit; color: inherit; }
     state = 'pause';
     showScreen('pause');
     $('hudBtns').hidden = true;
-    input.L = null;
-    input.R = null;
     if (AU.ctx) AU.ctx.suspend().catch(() => {});
+    releaseWake();
     $('btnResume').focus({ preventScroll: true });
   }
   function resumeGame() {
@@ -2264,7 +2362,10 @@ button { font: inherit; color: inherit; }
     state = run.pausedFrom || 'play';
     showScreen(null);
     $('hudBtns').hidden = false;
+    // thumbs held through the pause become neutral where they rest now
+    for (const side of ['L', 'R']) if (input[side]) rebase(input[side]);
     if (AU.ctx) AU.ctx.resume().catch(() => {});
+    requestWake();
     last = performance.now();
   }
   function gameOver() {
@@ -2282,24 +2383,51 @@ button { font: inherit; color: inherit; }
     $('stVmax').textContent = Math.round(run.vmax) + ' km/h';
     $('stNear').textContent = String(run.near);
     showScreen('over');
+    releaseWake();
     $('btnRetry').focus({ preventScroll: true });
   }
-  $('btnStart').addEventListener('click', startRun);
-  $('btnRetry').addEventListener('click', startRun);
-  $('btnMenu').addEventListener('click', toTitle);
-  $('btnResume').addEventListener('click', resumeGame);
-  $('btnQuit').addEventListener('click', () => {
+  // Mobile browsers only synthesise `click` for single-finger taps, and the steering thumb
+  // usually stays down, so touch taps act on pointerup; click stays for mouse and keyboard.
+  function onTap(el, fn) {
+    let pid = null;
+    let skipUntil = 0;
+    el.addEventListener('pointerdown', (e) => {
+      if (e.pointerType !== 'mouse') pid = e.pointerId;
+    });
+    el.addEventListener('pointercancel', () => { pid = null; });
+    el.addEventListener('pointerup', (e) => {
+      if (e.pointerId !== pid) return;
+      pid = null;
+      const r = el.getBoundingClientRect();
+      if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) return;
+      skipUntil = performance.now() + 700;
+      fn();
+    });
+    el.addEventListener('click', () => {
+      if (performance.now() < skipUntil) return;
+      fn();
+    });
+  }
+  const toggleSound = () => {
+    audioInit();
+    setMuted(!save.muted);
+  };
+  onTap($('btnStart'), startRun);
+  onTap($('btnRetry'), startRun);
+  onTap($('btnMenu'), toTitle);
+  onTap($('btnResume'), resumeGame);
+  onTap($('btnQuit'), () => {
     if (AU.ctx) AU.ctx.resume().catch(() => {});
     toTitle();
   });
-  $('btnPause').addEventListener('click', pauseGame);
-  $('btnSound').addEventListener('click', () => {
-    audioInit();
-    setMuted(!save.muted);
-  });
-  $('btnSoundTitle').addEventListener('click', () => {
-    audioInit();
-    setMuted(!save.muted);
+  onTap($('btnPause'), pauseGame);
+  onTap($('btnSound'), toggleSound);
+  onTap($('btnSoundTitle'), toggleSound);
+  window.addEventListener('popstate', () => {
+    if (state === 'play' || state === 'count') {
+      pauseGame();
+      try { history.pushState({ interfile: 1 }, ''); } catch (_) { /* ignore */ }
+    }
   });
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) {
@@ -2307,16 +2435,25 @@ button { font: inherit; color: inherit; }
       else if (AU.ctx) AU.ctx.suspend().catch(() => {});
     } else {
       if (state !== 'pause' && AU.ctx) AU.ctx.resume().catch(() => {});
-      if (state === 'play' || state === 'count' || state === 'pause') requestWake();
+      if (state === 'play' || state === 'count') requestWake();
     }
   });
   let wakeLock = null;
+  function releaseWake() {
+    const l = wakeLock;
+    wakeLock = null;
+    if (l) l.release().catch(() => {});
+  }
   function requestWake() {
     try {
       if (!('wakeLock' in navigator) || wakeLock) return;
       navigator.wakeLock.request('screen').then((l) => {
+        if (state !== 'play' && state !== 'count') {
+          l.release().catch(() => {});
+          return;
+        }
         wakeLock = l;
-        l.addEventListener('release', () => { wakeLock = null; });
+        l.addEventListener('release', () => { if (wakeLock === l) wakeLock = null; });
       }).catch(() => {});
     } catch (_) { /* ignore */ }
   }
@@ -2346,7 +2483,8 @@ button { font: inherit; color: inherit; }
   let worldRoll = 0;
   const lights = [];
   let lightN = 0;
-  for (let i = 0; i < 260; i++) lights.push({ x: 0, y: 0, r: 0, c: 'red', a: 1, flat: 0 });
+  let curN = 0; // segment being painted, so lights know their depth
+  for (let i = 0; i < 260; i++) lights.push({ x: 0, y: 0, r: 0, c: 'red', a: 1, flat: 0, n: 0 });
   function addLight(x, y, r, c, a, flat) {
     if (lightN >= lights.length || r < 0.6) return;
     const L = lights[lightN++];
@@ -2356,6 +2494,40 @@ button { font: inherit; color: inherit; }
     L.c = c;
     L.a = a;
     L.flat = flat || 0;
+    L.n = curN;
+  }
+  const occluders = [];
+  let occN = 0;
+  for (let i = 0; i < 64; i++) occluders.push({ n: 0, x0: 0, y0: 0, x1: 0, y1: 0 });
+  function addOccluder(x0, y0, x1, y1) {
+    if (occN >= occluders.length) return;
+    const o = occluders[occN++];
+    o.n = curN;
+    o.x0 = x0;
+    o.y0 = y0;
+    o.x1 = x1;
+    o.y1 = y1;
+  }
+  function occluded(L) {
+    for (let i = 0; i < occN; i++) {
+      const o = occluders[i];
+      if (o.n < L.n && L.x > o.x0 && L.x < o.x1 && L.y > o.y0 && L.y < o.y1) return true;
+    }
+    return false;
+  }
+  // vehicles are drawn in per-segment slices so long flanks keep the painter's order
+  const slicePool = [];
+  let sliceN = 0;
+  function slice(c, key, z0, z1, rear) {
+    let e = slicePool[sliceN];
+    if (!e) e = slicePool[sliceN] = { c: null, z: 0, z0: 0, z1: 0, rear: false };
+    sliceN++;
+    e.c = c;
+    e.z = key;
+    e.z0 = z0;
+    e.z1 = z1;
+    e.rear = rear;
+    return e;
   }
   const RA = { x: 0, y: 0 };
   function roadAt(z) {
@@ -2393,6 +2565,8 @@ button { font: inherit; color: inherit; }
 
   function render(dt) {
     lightN = 0;
+    occN = 0;
+    sliceN = 0;
     const pi = Math.floor(run.pos / SEG);
     baseIdx = pi;
     baseZ = pi * SEG;
@@ -2437,21 +2611,32 @@ button { font: inherit; color: inherit; }
       if (seg) seg.cars.length = 0;
     }
     for (const c of cars) {
-      let n = Math.floor(c.z / SEG) - pi;
       if (c.z + c.len < run.pos + NEAR) continue;
-      if (n < 0) n = 0;
-      if (n >= DRAW) continue;
-      const seg = segAbs(pi + n);
-      if (seg) seg.cars.push(c);
+      const n0 = Math.max(0, Math.floor(c.z / SEG) - pi);
+      if (n0 >= DRAW) continue;
+      const n1 = Math.min(DRAW - 1, Math.floor((c.z + c.len) / SEG) - pi);
+      for (let n = n0; n <= n1; n++) {
+        const seg = segAbs(pi + n);
+        if (!seg) continue;
+        const zs = (pi + n) * SEG;
+        const z0 = n === n0 ? c.z : zs;
+        const z1 = n === n1 ? c.z + c.len : zs + SEG;
+        seg.cars.push(slice(c, Math.max(c.z, zs), z0, z1, n === n0));
+      }
     }
 
-    ctx.save();
     worldRoll = P.roll + P.spin + jit(sh * 0.02);
+    if (Math.abs(worldRoll) > 0.5) {
+      ctx.fillStyle = pal.cGround;
+      ctx.fillRect(0, 0, W, H);
+    }
+    ctx.save();
     const pivX = W / 2;
     const pivY = H * 0.92;
     ctx.translate(pivX, pivY);
     ctx.rotate(-worldRoll);
     ctx.translate(-pivX, -pivY);
+    curN = DRAW + 1;
     drawSky();
     drawRoad();
     ctx.restore();
@@ -2576,6 +2761,7 @@ button { font: inherit; color: inherit; }
     for (let n = DRAW - 1; n >= 0; n--) {
       const seg = segAbs(baseIdx + n);
       if (!seg) continue;
+      curN = n;
       const x1 = SX[n];
       const y1 = SY[n];
       const s1 = SS[n];
@@ -2617,7 +2803,7 @@ button { font: inherit; color: inherit; }
         }
         quad(R.rail[fi], x1 + RAIL_R * s1, y1 - 0.78 * s1, x2 + RAIL_R * s2, y2 - 0.78 * s2, x2 + RAIL_R * s2, y2 - 0.47 * s2, x1 + RAIL_R * s1, y1 - 0.47 * s1);
         quad(R.railDark[fi], x1 + RAIL_R * s1, y1 - 0.62 * s1, x2 + RAIL_R * s2, y2 - 0.62 * s2, x2 + RAIL_R * s2, y2 - 0.6 * s2, x1 + RAIL_R * s1, y1 - 0.6 * s1);
-        if (pal.lamps > 0.05 && seg.i % 6 === 0 && n < 90) {
+        if (pal.lamps > 0.05 && seg.i % 6 === 0 && n < 90 && y1 - 0.7 * s1 <= CLIP[n] + 2) {
           // retro-reflectors on the rail and median catch the headlight
           addLight(x1 + RAIL_R * s1, y1 - 0.7 * s1, s1 * 0.25, 'amber', 0.5 * pal.lamps, 0);
           addLight(x1 + (RAIL_L + 0.1) * s1, y1 - 0.6 * s1, s1 * 0.22, 'white', 0.35 * pal.lamps, 0);
@@ -2641,7 +2827,7 @@ button { font: inherit; color: inherit; }
     if (alpha <= 0.01) return;
     while (i < sl.length || j < cl.length) {
       if (j >= cl.length || (i < sl.length && sl[i].z >= cl[j].z)) drawSprite(sl[i++], n, alpha);
-      else drawVehicle(cl[j++], n, alpha);
+      else drawVehicle(cl[j++], alpha);
     }
   }
 
@@ -2684,7 +2870,10 @@ button { font: inherit; color: inherit; }
       ctx.rotate(s.fly.rot);
       ctx.drawImage(d.img, -w / 2, -h / 2, w, h);
       ctx.restore();
-    } else ctx.drawImage(d.img, left, Y - h, w, h);
+    } else {
+      ctx.drawImage(d.img, left, Y - h, w, h);
+      if (s.kind === 'hard' || d === SPR.tree || d === SPR.pine) addOccluder(left, Y - h, left + w, Y);
+    }
     ctx.globalAlpha = 1;
     const vis = Y - 2 <= CLIP[Math.max(0, n)] + 1;
     if (s.lamp && pal.lamps > 0.02) {
@@ -2702,11 +2891,14 @@ button { font: inherit; color: inherit; }
     }
   }
   function drawFlat(s, z, lat, alpha) {
-    const a = proj(z - s.len / 2, lat, 0);
+    const zn = Math.max(z - s.len / 2, run.pos + 1.0);
+    const zf = z + s.len / 2;
+    if (zf - zn < 0.2) return;
+    const a = proj(zn, lat, 0);
     const ax = a.x;
     const ay = a.y;
     const as = a.s;
-    const b = proj(z + s.len / 2, lat, 0);
+    const b = proj(zf, lat, 0);
     const cy = (ay + b.y) / 2;
     const ry = Math.max(0.5, (ay - b.y) / 2);
     const rx = (s.fw / 2) * (as + b.s) / 2;
@@ -2767,7 +2959,48 @@ button { font: inherit; color: inherit; }
     ctx.ellipse(cx, cy, rx, ry, 0, 0, TAU);
     ctx.fill();
   }
-  function drawVehicle(c, n, alpha) {
+  // Flank panels as [zFrom, zTo, bottomFrom, topFrom, bottomTo, topTo, colour], z relative to the rear.
+  function flankParts(c) {
+    const d = c.def;
+    const L = c.len;
+    const H0 = d.h;
+    if (d.flank) return d.flank;
+    let parts;
+    if (d.type === 'truck') {
+      parts = [
+        [0, L, 0.45, 1.2, 0.45, 1.2, d.sideLo],
+        [0, L - 3.0, 1.15, H0, 1.15, H0, d.side],
+        [L - 2.5, L, 0.7, 3.25, 0.7, 2.6, '#d9d7d2'],
+        [L - 1.4, L - 0.4, 2.0, 2.9, 2.0, 2.4, '#1a2230'],
+      ];
+      d.wheels = [[1.2, 0.52], [2.5, 0.52], [3.8, 0.52], [L - 4.6, 0.52], [L - 1.0, 0.52]];
+    } else if (d.type === 'van' || d.type === 'work') {
+      parts = [
+        [0, L, 0.32, H0 * 0.98, 0.32, H0 * 0.5, d.side],
+        [L - 2.0, L - 0.9, H0 * 0.55, H0 * 0.86, H0 * 0.55, H0 * 0.6, d.glass],
+      ];
+      d.wheels = [[0.95, 0.36], [L - 1.0, 0.36]];
+    } else {
+      // body top falls from 0.68H at the boot to 0.55H at the bonnet; the greenhouse sits on it
+      const top = (z) => H0 * (0.68 - (0.13 * z) / L);
+      const a = 0.3;
+      const b = 0.75;
+      const cz = L - 2.0;
+      const e = L - 1.2;
+      parts = [
+        [0, L, 0.3, top(0), 0.3, top(L), d.side],
+        [a, b, top(a), top(a), top(b), H0 * 0.97, d.glass],
+        [b, cz, top(b), H0 * 0.97, top(cz), H0 * 0.97, d.glass],
+        [cz, e, top(cz), H0 * 0.97, top(e), top(e), d.glass],
+        [b, cz, H0 * 0.93, H0, H0 * 0.93, H0, d.side],
+      ];
+      d.wheels = [[0.85, 0.33], [L - 1.0, 0.33]];
+    }
+    d.flank = parts;
+    return parts;
+  }
+  function drawVehicle(e, alpha) {
+    const c = e.c;
     const d = c.def;
     const zR = c.z;
     const zF = c.z + c.len;
@@ -2784,42 +3017,45 @@ button { font: inherit; color: inherit; }
     if (X + w < -W * 1.6 && dzR > 2) return;
     if (X - w > W * 2.6 && dzR > 2) return;
     ctx.globalAlpha = alpha;
-    // contact shadow
-    if (dzR > 1) {
+    if (e.rear && dzR > 1) {
       ctx.fillStyle = 'rgba(0,0,0,0.28)';
       ctx.beginPath();
       ctx.ellipse(X, Y, w * 0.58, Math.max(1, w * 0.07), 0, 0, TAU);
       ctx.fill();
     }
-    // flank facing the rider
+    // the flank facing the rider, clipped to this segment's slice
     const rel = rx + c.x - camX;
     if (Math.abs(rel) > d.w * 0.5) {
-      const side = rel > 0 ? -1 : 1;
-      const lat = c.x + side * d.w * 0.5;
-      const H0 = d.h;
-      if (d.type === 'truck') {
-        sideQuad(d.sideLo, zR, zF, lat, 0.45, 1.2, 0.45, 1.2);
-        sideQuad(d.side, zR, zF - 3.0, lat, 1.15, H0, 1.15, H0);
-        sideQuad('#d9d7d2', zF - 2.5, zF, lat, 0.7, 3.25, 0.7, 2.6);
-        sideQuad('#1a2230', zF - 1.4, zF - 0.4, lat, 2.0, 2.9, 2.0, 2.4);
-        for (const wz of [1.2, 2.5, 3.8, c.len - 4.6, c.len - 1.0]) wheel(zR + wz, lat, 0.52);
-      } else if (d.type === 'van' || d.type === 'work') {
-        sideQuad(d.side, zR, zF, lat, 0.32, H0 * 0.98, 0.32, H0 * 0.5);
-        sideQuad(d.glass, zF - 2.0, zF - 0.9, lat, H0 * 0.55, H0 * 0.86, H0 * 0.55, H0 * 0.6);
-        wheel(zR + 0.95, lat, 0.36);
-        wheel(zF - 1.0, lat, 0.36);
-      } else {
-        sideQuad(d.side, zR, zF, lat, 0.3, H0 * 0.68, 0.3, H0 * 0.55);
-        sideQuad(d.glass, zR + 0.35, zF - 1.25, lat, H0 * 0.68, H0 * 0.94, H0 * 0.6, H0 * 0.66);
-        sideQuad(d.side, zR + 0.75, zF - 2.0, lat, H0 * 0.92, H0, H0 * 0.92, H0);
-        wheel(zR + 0.85, lat, 0.33);
-        wheel(zF - 1.0, lat, 0.33);
+      const lat = c.x + (rel > 0 ? -1 : 1) * d.w * 0.5;
+      const z0 = e.z0 - zR;
+      const z1 = e.z1 - zR;
+      const parts = flankParts(c);
+      for (let k = 0; k < parts.length; k++) {
+        const q = parts[k];
+        const a = Math.max(q[0], z0);
+        const b = Math.min(q[1], z1);
+        if (b - a < 0.01) continue;
+        const span = q[1] - q[0];
+        const ta = (a - q[0]) / span;
+        const tb = (b - q[0]) / span;
+        sideQuad(q[6], zR + a, zR + b, lat, lerp(q[2], q[4], ta), lerp(q[3], q[5], ta), lerp(q[2], q[4], tb), lerp(q[3], q[5], tb));
+      }
+      for (let k = 0; k < d.wheels.length; k++) {
+        const wz = d.wheels[k][0];
+        if (wz >= z0 && wz < z1) wheel(zR + wz, lat, d.wheels[k][1]);
       }
     }
-    if (dzR > 1.0) ctx.drawImage(d.img, X - w / 2, Y - h, w, h);
+    if (!e.rear) {
+      ctx.globalAlpha = 1;
+      return;
+    }
+    if (dzR > 1.0) {
+      ctx.drawImage(d.img, X - w / 2, Y - h, w, h);
+      addOccluder(X - w / 2, Y - h, X + w / 2, Y);
+    }
     ctx.globalAlpha = 1;
     // lights
-    if (dzR > 1.0 && Y - h * 0.5 <= CLIP[n] + 2) {
+    if (dzR > 1.0 && Y - h * 0.5 <= CLIP[curN] + 2) {
       const night = pal.lamps;
       const blinkOn = Math.sin(clock * 9.5) > 0;
       for (let k = 0; k < d.tail.length; k++) {
@@ -2874,6 +3110,7 @@ button { font: inherit; color: inherit; }
     ctx.translate(-W / 2, -H * 0.92);
     for (let i = 0; i < lightN; i++) {
       const L = lights[i];
+      if (occN && occluded(L)) continue;
       ctx.globalAlpha = clamp(L.a, 0, 1);
       const img = GLOW[L.c];
       if (L.flat) ctx.drawImage(img, L.x - L.r, L.y - L.r * 0.16, L.r * 2, L.r * 0.32);
@@ -3250,6 +3487,12 @@ button { font: inherit; color: inherit; }
     ctx.fillStyle = mc;
     ctx.textAlign = 'left';
     ctx.fillText(mt, mx + 6, y + 8.5 * k);
+    if (run.offRoad && state === 'play') {
+      ctx.font = '700 ' + Math.round(12 * k) + 'px ' + FU;
+      ctx.textAlign = 'left';
+      ctx.fillStyle = '#ffb22e';
+      ctx.fillText('hors voie : bonus vitesse coupé', mx + mw + 8, y + 11 * k);
+    }
     hudText(fmtKm(run.pos) + (save.best > 0 ? '   ·   record ' + fmtInt(save.best) : ''), x, y + 42 * k, '600 ' + Math.round(13 * k) + 'px ' + FU, '#d6d9e0');
     if (run.combo > 1) {
       const a = clamp(run.comboT / 1.2, 0, 1);
@@ -3301,23 +3544,26 @@ button { font: inherit; color: inherit; }
       const ox = t ? t.x0 : safe.l + Math.max(R + 24, W * 0.16);
       const oy = t ? t.y0 : H - safe.b - Math.max(R * 0.9, H * 0.22);
       const a = t ? 0.9 : hintA;
+      const lt = t ? t.lt : R;
+      const rt = t ? t.rt : R;
       ctx.globalAlpha = a;
       ctx.strokeStyle = 'rgba(243,239,230,0.35)';
       ctx.lineWidth = 8;
       ctx.beginPath();
-      ctx.moveTo(ox - R, oy);
-      ctx.lineTo(ox + R, oy);
+      ctx.moveTo(ox - lt, oy);
+      ctx.lineTo(ox + rt, oy);
       ctx.stroke();
       ctx.fillStyle = 'rgba(243,239,230,0.75)';
       for (const sd of [-1, 1]) {
+        const e = sd < 0 ? lt : rt;
         ctx.beginPath();
-        ctx.moveTo(ox + sd * (R + 16), oy);
-        ctx.lineTo(ox + sd * (R + 5), oy - 8);
-        ctx.lineTo(ox + sd * (R + 5), oy + 8);
+        ctx.moveTo(ox + sd * (e + 16), oy);
+        ctx.lineTo(ox + sd * (e + 5), oy - 8);
+        ctx.lineTo(ox + sd * (e + 5), oy + 8);
         ctx.closePath();
         ctx.fill();
       }
-      const kx = t ? ox + clamp(t.x - t.x0, -R, R) : ox;
+      const kx = t ? ox + clamp(t.x - t.x0, -lt, rt) : ox;
       ctx.strokeStyle = '#ffb22e';
       ctx.lineWidth = 3;
       ctx.beginPath();
@@ -3340,25 +3586,27 @@ button { font: inherit; color: inherit; }
       const ox = t ? t.x0 : W - safe.r - Math.max(R * 0.7 + 24, W * 0.12);
       const oy = t ? t.y0 : H - safe.b - Math.max(R + 30, H * 0.3);
       const a = t ? 0.9 : hintA;
+      const up = t ? t.up : R;
+      const dn = t ? t.dn : R;
       ctx.globalAlpha = a;
-      const g = ctx.createLinearGradient(0, oy - R, 0, oy + R);
+      const g = ctx.createLinearGradient(0, oy - up, 0, oy + dn);
       g.addColorStop(0, 'rgba(155,225,93,0.85)');
       g.addColorStop(0.5, 'rgba(243,239,230,0.25)');
       g.addColorStop(1, 'rgba(255,75,51,0.85)');
       ctx.strokeStyle = g;
       ctx.lineWidth = 8;
       ctx.beginPath();
-      ctx.moveTo(ox, oy - R);
-      ctx.lineTo(ox, oy + R);
+      ctx.moveTo(ox, oy - up);
+      ctx.lineTo(ox, oy + dn);
       ctx.stroke();
       ctx.font = '700 11px ' + FU;
       ctx.textAlign = 'left';
       ctx.textBaseline = 'middle';
       ctx.fillStyle = '#9be15d';
-      ctx.fillText('GAZ', ox + 14, oy - R + 4);
+      ctx.fillText('GAZ', ox + 14, oy - up + 4);
       ctx.fillStyle = '#ff6a50';
-      ctx.fillText('FREIN', ox + 14, oy + R - 4);
-      const ky = t ? oy + clamp(t.y - t.y0, -R, R) : oy;
+      ctx.fillText('FREIN', ox + 14, oy + dn - 4);
+      const ky = t ? oy + clamp(t.y - t.y0, -up, dn) : oy;
       const v = input.thr;
       ctx.strokeStyle = v > 0.05 ? '#9be15d' : v < -0.05 ? '#ff4b33' : '#ffb22e';
       ctx.lineWidth = 3;
@@ -3400,15 +3648,64 @@ button { font: inherit; color: inherit; }
    * ================================================================ */
   let last = performance.now();
   let palTimer = 0;
-  const perf = { acc: 0, n: 0 };
+  // Resolution follows the real frame interval (raster cost included), not script time.
+  const perf = { acc: 0, n: 0, t: 0, base: 17.5, bad: 0, good: 0, pending: 0, locked: false, top: 0 };
+  function perfReset() {
+    perf.acc = 0;
+    perf.n = 0;
+    perf.t = 0;
+  }
+  function perfSample(ms) {
+    if (state !== 'play' && state !== 'count' && state !== 'title') return;
+    if (ms > 250) return;
+    perf.acc += ms;
+    perf.n++;
+    perf.t += ms;
+    if (perf.t < 1500) return;
+    const avg = perf.acc / perf.n;
+    perfReset();
+    perf.base = Math.min(perf.base, Math.max(6, avg));
+    if (state === 'title' || perf.locked) return;
+    if (perf.pending) {
+      // a step down that did not speed frames up means the device is CPU- or vsync-bound
+      if (avg > perf.pending * 0.9) {
+        tier--;
+        applyScale();
+        perf.locked = true;
+      }
+      perf.pending = 0;
+      return;
+    }
+    if (avg > perf.base * 1.35) {
+      perf.good = 0;
+      if (++perf.bad >= 2 && tier < TIERS.length - 1) {
+        perf.bad = 0;
+        perf.pending = avg;
+        tier++;
+        applyScale();
+      }
+    } else {
+      perf.bad = 0;
+      if (avg <= perf.base * 1.1 && ++perf.good >= 7 && tier > perf.top) {
+        perf.good = 0;
+        tier--;
+        applyScale();
+      }
+    }
+  }
   function frame(now) {
     requestAnimationFrame(frame);
-    let dt = (now - last) / 1000;
+    const ms = now - last;
+    let dt = ms / 1000;
     last = now;
     if (!(dt > 0)) return;
     if (dt > 0.1) dt = 0.1;
-    if (!W || !H) resize();
-    const t0 = performance.now();
+    if (resizeQueued || !W || !H) {
+      resize();
+      perfReset();
+      if (state === 'pause') render(0);
+    }
+    perfSample(ms);
     readInput(dt);
     if (state !== 'pause') {
       const n = Math.max(1, Math.ceil(dt / (1 / 120)));
@@ -3418,19 +3715,6 @@ button { font: inherit; color: inherit; }
       render(dt);
     }
     audioUpdate();
-    if (state === 'play') {
-      perf.acc += performance.now() - t0;
-      perf.n++;
-      if (perf.n >= 90) {
-        const avg = perf.acc / perf.n;
-        perf.acc = 0;
-        perf.n = 0;
-        if (avg > 11 && tier < TIERS.length - 1) {
-          tier++;
-          applyScale();
-        }
-      }
-    }
   }
   function update(dt) {
     fx.shake = Math.max(0, fx.shake - dt * 1.8);
@@ -3449,7 +3733,10 @@ button { font: inherit; color: inherit; }
         if (after > 0) sfx.beep(440);
         else sfx.beep(880, 0.3);
       }
-      if (countT <= 0.2) state = 'play';
+      if (countT <= 0.2) {
+        state = 'play';
+        addPopup('Go', 'pouce droit vers le haut', '', '#ffb22e');
+      }
     } else if (state === 'crash') {
       crashT += dt;
       if (crashT > 1.5) gameOver();
