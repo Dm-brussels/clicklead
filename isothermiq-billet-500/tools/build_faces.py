@@ -589,8 +589,8 @@ def build_verso():
     g.append(f'<line x1="{f(cx - 17)}" y1="49.4" x2="{f(cx + 17)}" y2="49.4" stroke="{P["sand400"]}" stroke-width="0.2"/>')
     g.append(text(cx, 53.6, 3.1, "ET SANS ENGAGEMENT", FONT_DISPLAY, 700, P["cream"], anchor="middle", ls=0.25))
     for i, line in enumerate(["Sur la résidence de votre choix :",
-                              "nous repérons où elle perd sa chaleur",
-                              "– et une partie de ses charges."]):
+                              "un état des lieux clair, à présenter",
+                              "à votre prochaine Assemblée Générale."]):
         g.append(text(cx, 59.0 + i * 3.35, 2.65, line, FONT_TEXT, 400, P["leaf100"], anchor="middle"))
     # code campagne (suivi des retours)
     g.append(f'<rect x="{f(cx - 19.5)}" y="69.3" width="39" height="5.2" rx="0.8" fill="none" stroke="{P["sand400"]}" stroke-width="0.2" stroke-dasharray="0.8 0.5"/>')
@@ -599,7 +599,8 @@ def build_verso():
     # ---- zone droite
     rx0, rx1 = 64.0, 156.0
     g.append(logo(rx0, 5.4, 7.6, dark=True))
-    g.append(text(rx1 - 0.3, 10.1, 1.95, "BRUXELLES · BRABANT WALLON · WALLONIE", FONT_DISPLAY, 700, P["leaf600"], anchor="end", ls=0.15))
+    g.append(text(rx1 - 0.3, 7.9, 2.35, "L’isolation au service de votre patrimoine", FONT_TEXT, 600, P["sand600"], anchor="end"))
+    g.append(text(rx1 - 0.3, 11.2, 1.95, "BRUXELLES · BRABANT WALLON", FONT_DISPLAY, 700, P["leaf600"], anchor="end", ls=0.15))
 
     g.append(text(rx0, 18.6, 2.05, "ISOLATION & PERFORMANCE ÉNERGÉTIQUE DES COPROPRIÉTÉS", FONT_DISPLAY, 700, P["sand600"], ls=0.18))
     g.append(text(rx0, 24.1, 4.6, "On isole là où votre immeuble", FONT_DISPLAY, 700, P["leaf900"]))
@@ -622,10 +623,10 @@ def build_verso():
         g.append(text(cxs + 8.8, cys + 7.65, 2.3, l2, FONT_TEXT, 400, P["ink600"]))
 
     # preuves (toutes vérifiables sur le site)
-    proofs = ["Pas de sous-traitance", "Référent unique", "Garantie décennale", "Primes Renolution / Habitation"]
+    proofs = ["Le patron présent sur chantier", "Pas de sous-traitance", "Garantie décennale & RC pro", "Primes Renolution / Habitation"]
     g.append(f'<line x1="{rx0}" y1="52.0" x2="{rx1}" y2="52.0" stroke="{P["sand200"]}" stroke-width="0.2"/>')
     for i, pr in enumerate(proofs):
-        xx = rx0 + (i % 2) * 33.5
+        xx = rx0 + (i % 2) * 36.0
         yy = 55.6 + (i // 2) * 3.2
         g.append(f'<path d="M{f(xx)},{f(yy - 0.9)} l0.6,0.6 l1.2,-1.3" fill="none" stroke="{P["leaf600"]}" stroke-width="0.32" stroke-linecap="round" stroke-linejoin="round"/>')
         g.append(text(xx + 2.5, yy, 2.2, pr, FONT_TEXT, 600, P["leaf800"]))

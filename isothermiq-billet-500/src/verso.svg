@@ -112,12 +112,13 @@ text{font-kerning:normal}
 <line x1="12.6" y1="49.4" x2="46.6" y2="49.4" stroke="#c4ad7b" stroke-width="0.2"/>
 <text x="29.6" y="53.6" font-family="Barlow" font-weight="700" font-size="3.1" fill="#faf7f1" text-anchor="middle" letter-spacing="0.25" >ET SANS ENGAGEMENT</text>
 <text x="29.6" y="59" font-family="'Source Sans 3'" font-weight="400" font-size="2.65" fill="#dceadf" text-anchor="middle" letter-spacing="0" >Sur la résidence de votre choix :</text>
-<text x="29.6" y="62.35" font-family="'Source Sans 3'" font-weight="400" font-size="2.65" fill="#dceadf" text-anchor="middle" letter-spacing="0" >nous repérons où elle perd sa chaleur</text>
-<text x="29.6" y="65.7" font-family="'Source Sans 3'" font-weight="400" font-size="2.65" fill="#dceadf" text-anchor="middle" letter-spacing="0" >– et une partie de ses charges.</text>
+<text x="29.6" y="62.35" font-family="'Source Sans 3'" font-weight="400" font-size="2.65" fill="#dceadf" text-anchor="middle" letter-spacing="0" >un état des lieux clair, à présenter</text>
+<text x="29.6" y="65.7" font-family="'Source Sans 3'" font-weight="400" font-size="2.65" fill="#dceadf" text-anchor="middle" letter-spacing="0" >à votre prochaine Assemblée Générale.</text>
 <rect x="10.1" y="69.3" width="39" height="5.2" rx="0.8" fill="none" stroke="#c4ad7b" stroke-width="0.2" stroke-dasharray="0.8 0.5"/>
 <text x="29.6" y="72.75" font-family="'Source Sans 3'" font-weight="600" font-size="2.2" fill="#ebe1cb" text-anchor="middle" letter-spacing="0" >Mentionnez le code « BILLET 500 »</text>
 <g transform="translate(64,5.4) scale(0.173) translate(0,-2)"><path d="M19 2 L38 13 L38 35 L19 46 L0 35 L0 13 Z" fill="#1c402b"/><path d="M19 2 L38 13 L38 35 L19 46 L28 24 Z" fill="#245035"/><path d="M11 17 L27 17 L19 31 Z" fill="#faf7f1"/><line x1="50" y1="10" x2="50" y2="38" stroke="#1c402b" stroke-width="1.2"/><text x="62" y="31" fill="#1c402b" font-family="Inter" font-weight="700" font-size="19" textLength="132" lengthAdjust="spacing">ISOTHERMIQ</text></g>
-<text x="155.7" y="10.1" font-family="Barlow" font-weight="700" font-size="1.95" fill="#2d6644" text-anchor="end" letter-spacing="0.15" >BRUXELLES · BRABANT WALLON · WALLONIE</text>
+<text x="155.7" y="7.9" font-family="'Source Sans 3'" font-weight="600" font-size="2.35" fill="#87703f" text-anchor="end" letter-spacing="0" >L’isolation au service de votre patrimoine</text>
+<text x="155.7" y="11.2" font-family="Barlow" font-weight="700" font-size="1.95" fill="#2d6644" text-anchor="end" letter-spacing="0.15" >BRUXELLES · BRABANT WALLON</text>
 <text x="64" y="18.6" font-family="Barlow" font-weight="700" font-size="2.05" fill="#87703f" text-anchor="start" letter-spacing="0.18" >ISOLATION &amp; PERFORMANCE ÉNERGÉTIQUE DES COPROPRIÉTÉS</text>
 <text x="64" y="24.1" font-family="Barlow" font-weight="700" font-size="4.6" fill="#163322" text-anchor="start" letter-spacing="0" >On isole là où votre immeuble</text>
 <text x="64" y="29.1" font-family="Barlow" font-weight="700" font-size="4.6" fill="#163322" text-anchor="start" letter-spacing="0" >perd ses euros.</text>
@@ -143,13 +144,13 @@ text{font-kerning:normal}
 <text x="119.3" y="49.45" font-family="'Source Sans 3'" font-weight="400" font-size="2.3" fill="#353532" text-anchor="start" letter-spacing="0" >double ou triple vitrage</text>
 <line x1="64.0" y1="52.0" x2="156.0" y2="52.0" stroke="#ebe1cb" stroke-width="0.2"/>
 <path d="M64,54.7 l0.6,0.6 l1.2,-1.3" fill="none" stroke="#2d6644" stroke-width="0.32" stroke-linecap="round" stroke-linejoin="round"/>
-<text x="66.5" y="55.6" font-family="'Source Sans 3'" font-weight="600" font-size="2.2" fill="#1c402b" text-anchor="start" letter-spacing="0" >Pas de sous-traitance</text>
-<path d="M97.5,54.7 l0.6,0.6 l1.2,-1.3" fill="none" stroke="#2d6644" stroke-width="0.32" stroke-linecap="round" stroke-linejoin="round"/>
-<text x="100" y="55.6" font-family="'Source Sans 3'" font-weight="600" font-size="2.2" fill="#1c402b" text-anchor="start" letter-spacing="0" >Référent unique</text>
+<text x="66.5" y="55.6" font-family="'Source Sans 3'" font-weight="600" font-size="2.2" fill="#1c402b" text-anchor="start" letter-spacing="0" >Le patron présent sur chantier</text>
+<path d="M100,54.7 l0.6,0.6 l1.2,-1.3" fill="none" stroke="#2d6644" stroke-width="0.32" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="102.5" y="55.6" font-family="'Source Sans 3'" font-weight="600" font-size="2.2" fill="#1c402b" text-anchor="start" letter-spacing="0" >Pas de sous-traitance</text>
 <path d="M64,57.9 l0.6,0.6 l1.2,-1.3" fill="none" stroke="#2d6644" stroke-width="0.32" stroke-linecap="round" stroke-linejoin="round"/>
-<text x="66.5" y="58.8" font-family="'Source Sans 3'" font-weight="600" font-size="2.2" fill="#1c402b" text-anchor="start" letter-spacing="0" >Garantie décennale</text>
-<path d="M97.5,57.9 l0.6,0.6 l1.2,-1.3" fill="none" stroke="#2d6644" stroke-width="0.32" stroke-linecap="round" stroke-linejoin="round"/>
-<text x="100" y="58.8" font-family="'Source Sans 3'" font-weight="600" font-size="2.2" fill="#1c402b" text-anchor="start" letter-spacing="0" >Primes Renolution / Habitation</text>
+<text x="66.5" y="58.8" font-family="'Source Sans 3'" font-weight="600" font-size="2.2" fill="#1c402b" text-anchor="start" letter-spacing="0" >Garantie décennale &amp; RC pro</text>
+<path d="M100,57.9 l0.6,0.6 l1.2,-1.3" fill="none" stroke="#2d6644" stroke-width="0.32" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="102.5" y="58.8" font-family="'Source Sans 3'" font-weight="600" font-size="2.2" fill="#1c402b" text-anchor="start" letter-spacing="0" >Primes Renolution / Habitation</text>
 <rect x="64.0" y="60.9" width="71.6" height="12.4" rx="1.4" fill="#f5efe2"/>
 <text x="66.2" y="64.4" font-family="Barlow" font-weight="700" font-size="2.45" fill="#163322" text-anchor="start" letter-spacing="0" >Syndics, gestionnaires : choisissez une</text>
 <text x="66.2" y="67.1" font-family="Barlow" font-weight="700" font-size="2.45" fill="#163322" text-anchor="start" letter-spacing="0" >résidence, nous venons l’inspecter.</text>

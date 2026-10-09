@@ -51,14 +51,21 @@ L'impression recto verso se fait sur le grand côté (tête-bêche horizontal st
 - Logo : géométrie officielle (`logo-dark.svg` du site) ; couleurs (`#1c402b`, `#245035`, `#faf7f1`, sable `#c4ad7b`…) et typographies relevées dans la feuille de styles du site
 - QR code : `https://isothermiq.be/devis?utm_source=billet500`. La page répond (HTTP 200) et le code a été décodé avec succès sur les rendus RVB et CMJN.
 
-## Points à faire valider par le client avant impression
+## Capture d'écran (e-mail de prospection du 19/09/2026) : ce qu'elle confirme
 
-1. **Périmètre des prestations.** Le site ne présente que la **toiture** (isolation, combles, rénovation et remplacement). Les **façades et pignons (ITE)**, les **châssis et vitrages** et le **roofing APP/SBS** viennent du brief et de la communication fournie, pas du site. Il faut confirmer qu'Isothermiq les réalise.
-2. **Le logo.** Le logo officiel est « ISOTHERMIQ | TOITURE ». Comme la campagne couvre aussi façades et châssis, la mention « TOITURE » a été retirée. Le symbole et le mot-symbole restent identiques à l'original. Pour revenir au logo complet : `logo(..., with_toiture=True)`.
-3. **L'offre.** Le site parle de « visite technique offerte ». Le flyer reprend le libellé de la communication existante, « audit visuel gratuit et sans engagement ». Il faut confirmer que l'offre s'applique aux copropriétés.
-4. **La zone.** « Wallonie » figure sur le verso, comme dans le brief. Le site indique Bruxelles et le Brabant wallon, plus le Hainaut, Namur et le Brabant flamand pour les projets d'envergure.
-5. **Les mentions légales.** La raison sociale ECO GROUP PARTNERS SRL apparaît uniquement dans la ligne légale, sans son logo. On peut la retirer dans `CONTENT["legal"]`.
-6. **La capture d'écran.** Elle n'a pas été reçue. L'analyse s'appuie sur la description détaillée du brief.
+- **Prestations** : toitures plates (toiture chaude, roofing APP/SBS), façades et pignons (ITE, ponts thermiques), toitures en pente et combles, châssis double ou triple vitrage. Ces quatre blocs sont confirmés par la communication d'Isothermiq elle-même.
+- **Offre** : « audit visuel gratuit et sans engagement sur l'une des résidences de votre choix », pour **préparer les prochaines Assemblées Générales**. Cet argument a été ajouté au verso.
+- **Signature de marque** : « L'isolation au service de votre patrimoine », ajoutée en en-tête du verso.
+- **Arguments** : suivi direct par le patron sur chantier, garantie décennale et RC professionnelle. Ils ont été ajoutés aux preuves.
+- **Zone** : Brabant wallon et Bruxelles. La mention « Wallonie » a été retirée, aucune des deux sources ne la présentant comme zone d'intervention.
+- **Nom** : la communication signe « Isothermiq » et non « Isothermiq Toiture », ce qui justifie le logo sans la mention TOITURE.
+
+## Points restant à valider avant impression
+
+1. **Adresse e-mail** : l'e-mail utilise **info@isothermiq.be**, le site **contact@isothermiq.be**. Le flyer reprend contact@ (vérifiée sur le site). Il faut confirmer l'adresse à mettre en avant.
+2. **Libellé de l'offre** : le site parle de « visite technique offerte », l'e-mail d'« audit visuel gratuit ». Le flyer reprend le libellé de l'e-mail.
+3. **Mentions légales** : ECO GROUP PARTNERS SRL figure uniquement dans la ligne légale, sans son logo. On peut la retirer dans `CONTENT["legal"]`.
+4. **Numéros de téléphone** : seul le 0473 55 86 32 est affiché. Le fixe 02/373.01.60 de l'e-mail est celui d'Eco Group Partners et n'apparaît pas sur le site Isothermiq.
 
 ## Billets en euros : règles de reproduction (BCE)
 
